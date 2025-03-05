@@ -1,0 +1,22 @@
+.whatsappButton {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 100; /* Garante que o botão fique acima de outros elementos */
+    border-radius: 50%; /* Deixa o botão circular */
+    box-shadow: 1px 1px 4px rgba(0, 0, 0, 0.3); /* Adiciona uma sombra sutil */
+    transition: opacity 0.3s ease; /* Transição suave para a opacidade */
+    opacity: 0; /* Inicialmente oculto */
+  }
+  
+  .whatsappButton.visible {
+    opacity: 1; /* Visível após o atraso */
+  }
+  
+  .whatsappIcon {
+    width: 60px; /* Ajuste o tamanho conforme necessário */
+    height: 60px; /* Ajuste o tamanho conforme necessário */
+    padding: 10px;
+    background-color: #25d366; /* Cor de fundo do WhatsApp */
+    border-radius: 50%;
+  }
