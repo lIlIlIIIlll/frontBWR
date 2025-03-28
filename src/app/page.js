@@ -129,7 +129,7 @@ export default async function Home() {  //  Make the component async
           justifyContent: 'center',
           alignItems: 'center',
           width: '100%',
-          height: { xs: '548px', md: '755px' },
+          height: { xs: '920px', md: '755px' },
           position: 'relative',
           overflow: 'hidden',
         }}
