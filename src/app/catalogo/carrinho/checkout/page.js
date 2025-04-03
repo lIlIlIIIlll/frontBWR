@@ -102,6 +102,13 @@ const CheckoutPage = () => {
     setTotal(newTotal);
   }, [cartItems]);
 
+  useEffect(()=>{
+    const token = sessionStorage.getItem('token');
+    if(!token){
+      router.push('/registro')
+    }
+  },[])
+
   const handleCepChange = (event) => {
     setCep(event.target.value);
   };
@@ -127,120 +134,120 @@ const CheckoutPage = () => {
     calculateFreight();
   }, [cep]);
 
-    const handlePaymentChange = (event) => {
-    setPaymentMethod(event.target.value);
-    // Reset da brand ao mudar o método de pagamento.  Importante para a validação.
-    if (event.target.value !== 'credit' && event.target.value !== 'debit') {
-      setCardData({ ...cardData, name: '', number: '', expiry: null, cvv: '', brand: '' });
-    }
-  };
+const handlePaymentChange = (event) => {
+  setPaymentMethod(event.target.value);
+  // Reset da brand ao mudar o método de pagamento.  Importante para a validação.
+  if (event.target.value !== 'credit' && event.target.value !== 'debit') {
+    setCardData({ ...cardData, name: '', number: '', expiry: null, cvv: '', brand: '' });
+  }
+};
 
-  const handleCardInputChange = (event) => {
-    setCardData({
-      ...cardData,
-      [event.target.name]: event.target.value,
-    });
-  };
-
-  const handleExpiryChange = (newValue) => {
-    setCardData({ ...cardData, expiry: newValue });
-
-    if (newValue && isValid(newValue)) {
-      const formatted = format(newValue, 'MM/yy', { locale: ptBR });
-      setExpiryError(formatted.length !== 5);
-    } else {
-      setExpiryError(true);
-    }
-  };
-
-  const formattedExpiry = cardData.expiry
-    ? format(cardData.expiry, 'MM/yy', { locale: ptBR })
-    : '';
-
-  const grandTotal = total + freight;
-  const formattedGrandTotal = grandTotal.toLocaleString('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
+const handleCardInputChange = (event) => {
+  setCardData({
+    ...cardData,
+    [event.target.name]: event.target.value,
   });
+};
 
-  const handleConfirmOrder = async () => {
-    setCheckoutError(null);
-    setIsCheckoutLoading(true);
+const handleExpiryChange = (newValue) => {
+  setCardData({ ...cardData, expiry: newValue });
 
-    let payload = {
-      produtos: cartItems.map((item) => ({ id: item.id, quantidade: item.quantity })),
-      frete: freight,
-      referencia: `7744867891011123`,
-    };
+  if (newValue && isValid(newValue)) {
+    const formatted = format(newValue, 'MM/yy', { locale: ptBR });
+    setExpiryError(formatted.length !== 5);
+  } else {
+    setExpiryError(true);
+  }
+};
 
-    if (paymentMethod === 'pix') {
-      payload.metodoPagamento = 'pix';
-    } else if (paymentMethod === 'credit' || paymentMethod === 'debit') {
-      payload.metodoPagamento = paymentMethod;
+const formattedExpiry = cardData.expiry
+  ? format(cardData.expiry, 'MM/yy', { locale: ptBR })
+  : '';
 
-      // Validação completa para cartão:
-      if (!cardData.name || !cardData.number || !cardData.expiry || !cardData.cvv || !cardData.brand) {
-        setCheckoutError('Preencha todos os dados do cartão, incluindo a bandeira.');
-        setIsCheckoutLoading(false);
-        return;
-      }
+const grandTotal = total + freight;
+const formattedGrandTotal = grandTotal.toLocaleString('pt-BR', {
+  style: 'currency',
+  currency: 'BRL',
+});
 
-      const expiryMonth = String(cardData.expiry.getMonth() + 1).padStart(2, '0');
-      const expiryYear = String(cardData.expiry.getFullYear());
-        // Formato MM/AA (dois dígitos para o ano)
-      const shortExpiryYear = expiryYear.slice(-2);
+const handleConfirmOrder = async () => {
+  setCheckoutError(null);
+  setIsCheckoutLoading(true);
 
+  let payload = {
+    produtos: cartItems.map((item) => ({ id: item.id, quantidade: item.quantity })),
+    frete: freight,
+    referencia: `7744867891011123`,
+  };
 
-      payload.dadosCartao = {
-        cardholderName: cardData.name,
-        cardNumber: cardData.number,
-        expirationDate: `${expiryMonth}/${shortExpiryYear}`, // Formato MM/AA
-        expirationMonth: parseInt(expiryMonth, 10), // Inteiro
-        expirationYear: parseInt(expiryYear, 10),   // Inteiro
-        securityCode: cardData.cvv,
-        brand: cardData.brand,
-      };
+  if (paymentMethod === 'pix') {
+    payload.metodoPagamento = 'pix';
+  } else if (paymentMethod === 'credit' || paymentMethod === 'debit') {
+    payload.metodoPagamento = paymentMethod;
 
-    } else {
-      setCheckoutError('Selecione um método de pagamento.');
+    // Validação completa para cartão:
+    if (!cardData.name || !cardData.number || !cardData.expiry || !cardData.cvv || !cardData.brand) {
+      setCheckoutError('Preencha todos os dados do cartão, incluindo a bandeira.');
       setIsCheckoutLoading(false);
       return;
     }
 
-    try {
-      const response = await fetch(`https://${API}/Checkout/checkout`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
+    const expiryMonth = String(cardData.expiry.getMonth() + 1).padStart(2, '0');
+    const expiryYear = String(cardData.expiry.getFullYear());
+      // Formato MM/AA (dois dígitos para o ano)
+    const shortExpiryYear = expiryYear.slice(-2);
 
-      if (response.ok) {
-        setCheckoutSuccess(true);
-        sessionStorage.removeItem('carrinho');
-        window.dispatchEvent(new Event('storage'));
-        router.push('/');
-      } else {
-        const errorData = await response.json();
-        setCheckoutError(errorData.message || 'Erro ao processar o pedido. Tente novamente.');
-      }
-    } catch (error) {
-      console.error('Erro no checkout:', error);
-      setCheckoutError('Erro ao conectar com o servidor. Tente novamente.');
-    } finally {
-      setIsCheckoutLoading(false);
-    }
-  };
 
-  if (loading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '80vh' }}>
-        <CircularProgress />
-      </Box>
-    );
+    payload.dadosCartao = {
+      cardholderName: cardData.name,
+      cardNumber: cardData.number,
+      expirationDate: `${expiryMonth}/${shortExpiryYear}`, // Formato MM/AA
+      expirationMonth: parseInt(expiryMonth, 10), // Inteiro
+      expirationYear: parseInt(expiryYear, 10),   // Inteiro
+      securityCode: cardData.cvv,
+      brand: cardData.brand,
+    };
+
+  } else {
+    setCheckoutError('Selecione um método de pagamento.');
+    setIsCheckoutLoading(false);
+    return;
   }
+
+  try {
+    const response = await fetch(`https://${API}/Checkout/checkout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (response.ok) {
+      setCheckoutSuccess(true);
+      sessionStorage.removeItem('carrinho');
+      window.dispatchEvent(new Event('storage'));
+      router.push('/');
+    } else {
+      const errorData = await response.json();
+      setCheckoutError(errorData.message || 'Erro ao processar o pedido. Tente novamente.');
+    }
+  } catch (error) {
+    console.error('Erro no checkout:', error);
+    setCheckoutError('Erro ao conectar com o servidor. Tente novamente.');
+  } finally {
+    setIsCheckoutLoading(false);
+  }
+};
+
+if (loading) {
+  return (
+    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '80vh' }}>
+      <CircularProgress />
+    </Box>
+  );
+}
 
   return (
     <Box sx={{ p: { xs: 2, md: 4 }, pt: '113px', display: 'flex', justifyContent: 'center' }}>
