@@ -189,7 +189,7 @@ function ProductPage() {
   const imageUrl = product.images && product.images.length > 0 ? product.images[0].url : '/600x400.svg'; // Use first image or placeholder
 
   return (
-    <Box sx={{ p: { xs: 2, md: 4 }, pt: { xs: '70px', md: '88px' } }}> {/* Added top padding */}
+    <Box sx={{ p: { xs: 2, md: 4 }, pt: { xs: '70px', md: '88px' }, overflow:'hidden'}}> {/* Added top padding */}
       <Grid container spacing={4}>
         {/* Coluna da Imagem */}
         <Grid item xs={12} md={5}>

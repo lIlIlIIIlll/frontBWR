@@ -1192,10 +1192,18 @@ const AdminPanel = () => {
         const hasDetails = !!productToEdit.technicalDetails;
         setShowTechnicalDetails(hasDetails);
 
-        // Ensure relatedProductIds is an array, default to [] if null/undefined
-        const relatedIds = Array.isArray(productToEdit.relatedProductIds)
-            ? productToEdit.relatedProductIds
-            : [];
+        // --- FIX: Parse the relatedProductIds string into an array of numbers ---
+        let relatedIds = []; // Default to empty array
+        const rawRelatedIds = productToEdit.relatedProductIds; // Get the raw string/null value
+
+        if (typeof rawRelatedIds === 'string' && rawRelatedIds.trim() !== '') {
+          relatedIds = rawRelatedIds
+            .split(',')             // Split the string "11,13,14" into ["11", "13", "14"]
+            .map(idStr => parseInt(idStr.trim(), 10)) // Convert each string ID to a number
+            .filter(id => !isNaN(id)); // Filter out any potential NaN results (e.g., from empty strings or bad data)
+        }
+        // Now `relatedIds` is an array of numbers, e.g., [11, 13, 14] or []
+        // --- END FIX ---
 
         setFormData({
           nameProduct: productToEdit.nameProduct || '',
@@ -1204,7 +1212,7 @@ const AdminPanel = () => {
           categoryId: productToEdit.categoryId || '',
           subcategoryId: productToEdit.subcategoryId || '',
           productFrete: productToEdit.productFrete || false,
-          relatedProductIds: relatedIds, // <-- ADDED: Load existing IDs
+          relatedProductIds: relatedIds, // <-- USE THE CORRECTLY PARSED ARRAY OF IDs
           technicalDetails: productToEdit.technicalDetails || { // Default empty details if null
             flow: '', pressure: '', rotation: '', power: '',
             temperature: '', weight: '', oilCapacity: '',
@@ -1324,6 +1332,10 @@ const handleSaveProduct = async () => {
       return;
   }
 
+  // --- FIX: Convert the relatedProductIds array back to a comma-separated string for the API ---
+  const relatedIdsString = formData.relatedProductIds.join(',');
+  // --- END FIX ---
+
   const productData = {
       nameProduct: formData.nameProduct,
       description: formData.description, // Keep original field name if backend expects it
@@ -1336,7 +1348,7 @@ const handleSaveProduct = async () => {
       additionalInfo: formData.additionalInfo,
       stockQuantity: stockQuantity, // Send the parsed integer
       productFrete: formData.productFrete,
-      relatedProductIds: formData.relatedProductIds || [], // <-- ADDED: Send the array of IDs
+      relatedProductIds: relatedIdsString, // <-- Send the comma-separated STRING
       // technicalDetails are handled separately after product save/update
   };
 
@@ -1360,6 +1372,7 @@ const handleSaveProduct = async () => {
 
       savedOrUpdatedProduct = await productResponse.json();
       const productId = savedOrUpdatedProduct.id;
+      
 
       // --- 2. Save/Update Technical Details (if checkbox is checked) ---
        if (showTechnicalDetails) {
@@ -1375,7 +1388,7 @@ const handleSaveProduct = async () => {
       } else if (isEditMode && selectedProduct && selectedProduct.technicalDetails) {
           // --- 3. Delete Technical Details (if checkbox is unchecked in edit mode and details existed) ---
           try {
-              await deleteTechnicalDetails(productId, token);
+              await deleteTechnicalDetails(selectedProduct.technicalDetails.id, token);
               console.log("Technical details deleted for product:", productId);
           } catch (deleteError) {
               console.error('Erro ao deletar detalhes técnicos:', deleteError);
@@ -1388,6 +1401,7 @@ const handleSaveProduct = async () => {
       alert(`Produto ${isEditMode ? 'atualizado' : 'adicionado'} com sucesso!`);
       setIsModalOpen(false);
       fetchProducts(); // Refresh the product list
+      fetchAllProductsForSelection(); // Refresh the list used for related products dropdown
 
   } catch (error) {
       console.error(
@@ -1401,68 +1415,75 @@ const handleSaveProduct = async () => {
 };
 
 // Function to save or update technical details
-const saveTechnicalDetails = async (productId, details, token, detailsExist) => {
-    const method = detailsExist ? 'PUT' : 'POST';
-    // IMPORTANT: Verify your actual API endpoints for Tech Details PUT/POST
-    // Assuming POST /technical-details creates a new one linked to productId
-    // Assuming PUT /technical-details/{id} updates an existing one (need details ID if PUT)
-    // OR PUT /technical-details/product/{productId} updates by product ID (simpler if unique)
-    // Let's assume the PUT by product ID for simplicity here, adjust if needed.
-    const url = detailsExist
-        ? `https://${API}/technical-details/product/${productId}` // PUT updates by product ID
-        : `https://${API}/technical-details`; // POST creates new
+const saveTechnicalDetails = async (productId, details, token, hasExistingDetails) => {
+  // Se não houver detalhes para salvar, retorna
+  if (!details || Object.keys(details).length === 0 || !Object.values(details).some(v => v)) {
+      console.log("Nenhum detalhe técnico para salvar.");
+      return;
+  }
 
-    console.log(`Saving tech details. Method: ${method}, URL: ${url}, Exists: ${detailsExist}`);
+  // Determina o método e a URL baseado se já existem detalhes
+  const method = hasExistingDetails ? 'PUT' : 'POST';
+  // Ajuste a URL conforme sua API (pode incluir o productId ou não)
+  // Exemplo 1: Endpoint geral para detalhes, productId vai no corpo
+  let url = `https://${API}/technical-details`;
+  // Exemplo 2: Endpoint específico para o produto
+  // let url = `https://${API}/products/${productId}/technical-details`;
+  // Exemplo 3: Se for PUT, pode precisar do ID do detalhe técnico
+  // let url = `https://${API}/technical-details/${existingDetailId}`; // Necessitaria buscar o ID antes
 
-    const payload = {
-        ...details,
-        productId: productId, // Ensure productId is always included for POST
-    };
+  // Prepara o corpo da requisição
+  const body = {
+      ...details,
+      productId: productId, // Garante que o productId está no corpo, se necessário
+  };
+  // Remover campos vazios se a API não os aceitar
+   Object.keys(body).forEach(key => (body[key] == null || body[key] === '') && delete body[key]);
 
-    // Clean up empty strings, send null instead if backend prefers
-    Object.keys(payload).forEach(key => {
-        if (payload[key] === '') {
-            payload[key] = null; // or delete payload[key]; depending on backend
-        }
-    });
 
-    try {
-        const response = await fetch(url, {
-            method: method,
-            headers: {
-                Authorization: `Bearer ${token}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(payload),
-        });
+  try {
+      const response = await fetch(url, {
+          method: method,
+          headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+      });
 
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ message: 'Resposta inválida do servidor.' }));
-            throw new Error(errorData.message || `Falha na requisição ${method} de detalhes técnicos`);
-        }
+      if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ message: 'Erro desconhecido' }));
+          throw new Error(errorData.message || `Falha ao salvar detalhes técnicos (${response.status})`);
+      }
 
-        console.log("Detalhes técnicos salvos/atualizados com sucesso.");
-        // No need to return data unless necessary for subsequent steps
-        // return await response.json();
+      console.log("Detalhes técnicos salvos com sucesso.");
+      // return await response.json(); // Retorna os dados salvos se necessário
 
-    } catch (error) {
-        console.error(`Erro ao ${detailsExist ? 'atualizar' : 'salvar'} detalhes técnicos:`, error);
-        throw error; // Re-throw the error to be caught by handleSaveProduct
-    }
+  } catch (error) {
+      console.error('Erro na função saveTechnicalDetails:', error);
+      throw error; // Re-lança o erro para ser tratado no handleSaveProduct
+  }
 };
+
 
 // Function to delete technical details
 const deleteTechnicalDetails = async (productId, token) => {
     // IMPORTANT: Verify your actual API endpoint for deleting Tech Details by Product ID
-    const url = `https://${API}/technical-details/product/${productId}`;
+    const url = `https://${API}/technical-details/`;
     console.log("Attempting to delete technical details for product:", productId);
+
+    const bodyy = {
+      id:selectedProduct.technicalDetails.id, // Garante que o productId está no corpo, se necessário
+  };
 
     try {
         const response = await fetch(url, {
             method: 'DELETE',
             headers: {
-                Authorization: `Bearer ${token}`,
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
             },
+            body: JSON.stringify(bodyy)
         });
 
         // Check for 200 OK or 204 No Content which are typical success statuses for DELETE
@@ -1726,42 +1747,25 @@ const deleteTechnicalDetails = async (productId, token) => {
       align: 'center',
       headerAlign: 'center',
     },
-    // --- ADDED: Related Products Count ---
+    // --- FIX: Updated Related Products Count Column ---
     {
-      field: 'relatedProductIds',
+      field: 'relatedProductIds', // Field still holds the raw string/null from API data
       headerName: 'Relacionados',
       width: 120,
       align: 'center',
       headerAlign: 'center',
       type: 'number', // Treat as number for sorting
-      valueGetter: (value) => (Array.isArray(value) ? value.length : 0), // Get array length
-      renderCell: (params) => ( // Display the count
+      valueGetter: (value) => { // Calculate count *from the string*
+          if (typeof value === 'string' && value.trim() !== '') {
+              // Split the string, filter out potential empty strings if separators are messy (e.g., ",," or ends with ",")
+              return value.split(',').filter(id => id.trim() !== '').length;
+          }
+          return 0; // Return 0 if null, empty string, or not a string
+      },
+      renderCell: (params) => ( // Display the count calculated by valueGetter
           <Typography variant="body2">
-            {Array.isArray(params.value) ? params.value.length : 0}
+            {params.value}
           </Typography>
-      ),
-    },
-    // --- END ADDED ---
-    // { field: 'productDescription', headerName: 'Descrição', width: 300 }, // Hidden
-    // { field: 'additionalInfo', headerName: 'Info Adicional', width: 300 }, // Hidden
-     { // Action column
-      field: 'actions',
-      headerName: 'Ações',
-      width: 100,
-      sortable: false,
-      disableColumnMenu: true,
-      renderCell: (params) => (
-        <IconButton
-          onClick={(e) => {
-              e.stopPropagation(); // Prevent row selection if clicking button
-              setSelectedRowIds([params.id]); // Ensure only this row ID is selected
-              handleEditProduct(); // Open edit modal for this row
-           }}
-          size="small"
-          aria-label="editar produto"
-        >
-          <EditIcon fontSize="small" />
-        </IconButton>
       ),
     },
   ];
